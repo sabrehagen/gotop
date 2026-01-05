@@ -2,11 +2,14 @@ package widgets
 
 import (
 	"fmt"
+	"image"
 	"log"
 	"strings"
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
+	tui "github.com/gizak/termui/v3"
+	rw "github.com/mattn/go-runewidth"
 	psNet "github.com/shirou/gopsutil/v3/net"
 
 	ui "github.com/xxxserxxx/gotop/v4/termui"
@@ -18,6 +21,9 @@ const (
 	NetInterfaceAll = "all"
 	// NetInterfaceVpn is the VPN interface
 	NetInterfaceVpn = "tun0"
+
+	_netDownArrow = "▼"
+	_netUpArrow   = "▲"
 )
 
 type NetWidget struct {
@@ -31,6 +37,18 @@ type NetWidget struct {
 	sentMetric     *metrics.Counter
 	recvMetric     *metrics.Counter
 	Mbps           bool
+
+	baseTitle    string
+	recentRxRate string
+	recentTxRate string
+}
+
+func padLeftToWidth(s string, w int) string {
+	sw := rw.StringWidth(s)
+	if sw >= w {
+		return s
+	}
+	return strings.Repeat(" ", w-sw) + s
 }
 
 // TODO: state:merge #169 % option for network use (jrswab/networkPercentage)
@@ -47,10 +65,11 @@ func NewNetWidget(netInterface string) *NetWidget {
 		updateInterval: time.Second,
 		NetInterface:   strings.Split(netInterface, ","),
 	}
-	self.Title = tr.Value("widget.label.net")
+	self.baseTitle = tr.Value("widget.label.net")
 	if netInterface != "all" {
-		self.Title = tr.Value("widget.label.netint", netInterface)
+		self.baseTitle = tr.Value("widget.label.netint", netInterface)
 	}
+	self.Title = self.baseTitle
 
 	self.update()
 
@@ -63,6 +82,48 @@ func NewNetWidget(netInterface string) *NetWidget {
 	}()
 
 	return self
+}
+
+// Draw overrides SparklineGroup.Draw so we can adjust the title when the widget is too small
+// to display the per-line RX/s and TX/s stats.
+func (net *NetWidget) Draw(buf *tui.Buffer) {
+	// SparklineGroup.Draw only renders Title2 when Inner.Dy() > 6.
+	// When it can't be shown, render those stats right-aligned in the widget header instead.
+	net.Title = net.baseTitle
+	net.SparklineGroup.Draw(buf)
+
+	// Only draw the compact RX/TX rates in the header when the per-line Title2 can't be displayed.
+	if net.Inner.Dy() > 6 || net.recentRxRate == "" || net.recentTxRate == "" {
+		return
+	}
+
+	// Right-align the TX/RX rate string similar to how the process widget draws its location.
+	maxRateW := rw.StringWidth(net.recentRxRate)
+	if w := rw.StringWidth(net.recentTxRate); w > maxRateW {
+		maxRateW = w
+	}
+	rx := padLeftToWidth(net.recentRxRate, maxRateW)
+	tx := padLeftToWidth(net.recentTxRate, maxRateW)
+	// TX first, then RX; keep a single space between the two groups.
+	right := fmt.Sprintf(" %s %s %s %s ", _netUpArrow, tx, _netDownArrow, rx)
+
+	rightW := rw.StringWidth(right)
+	rightEdge := net.Max.X - 2
+	minStart := net.Min.X + 2 + rw.StringWidth(net.Title) + 1
+	startX := net.Max.X - rightW - 2
+
+	// If the widget is too narrow, trim the right-side string to avoid overlapping the title.
+	if startX < minStart {
+		availW := rightEdge - minStart + 1
+		if availW <= 0 {
+			return
+		}
+		right = tui.TrimString(right, availW)
+		rightW = rw.StringWidth(right)
+		startX = rightEdge - rightW + 1
+	}
+
+	buf.SetString(right, net.TitleStyle, image.Pt(startX, net.Min.Y))
 }
 
 func (net *NetWidget) EnableMetric() {
@@ -164,5 +225,18 @@ func (net *NetWidget) update() {
 
 		net.Lines[i].Title1 = fmt.Sprintf(" %s %s: %5.1f %s", tr.Value("total"), label, totalConverted, unitTotal)
 		net.Lines[i].Title2 = fmt.Sprintf(format, rate, recentConverted, unitRecent)
+
+		// Keep a compact formatted rate for the widget title (used when Title2 is hidden).
+		var compactRate string
+		if net.Mbps {
+			compactRate = fmt.Sprintf("%.3f mbps", recentConverted)
+		} else {
+			compactRate = fmt.Sprintf("%.1f %s/s", recentConverted, unitRecent)
+		}
+		if i == 0 {
+			net.recentRxRate = compactRate
+		} else {
+			net.recentTxRate = compactRate
+		}
 	}
 }
