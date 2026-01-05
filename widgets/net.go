@@ -39,7 +39,7 @@ type NetWidget struct {
 	Mbps           bool
 	// NetTitleStats controls whether compact RX/TX rates are rendered in the widget
 	// title bar when the widget is too short to show per-line Title2 stats.
-	NetTitleStats  bool
+	NetTitleStats bool
 
 	baseTitle    string
 	recentRxRate string
@@ -111,13 +111,13 @@ func (net *NetWidget) Draw(buf *tui.Buffer) {
 		return
 	}
 
-	// Right-align the TX/RX rate string similar to how the process widget draws its location.
+	// Right-align the RX/TX rate string similar to how the process widget draws its location.
 	// Keep the icon glued to the rate; any fixed-width padding is handled inside the formatted rate.
 	txGroup := formatHeaderRate(_netUpArrow, net.recentTxRate)
 	rxGroup := formatHeaderRate(_netDownArrow, net.recentRxRate)
 
-	// TX first, then RX; keep a single space between the two groups.
-	right := fmt.Sprintf(" %s %s ", txGroup, rxGroup)
+	// RX first, then TX; keep a single space between the two groups.
+	right := fmt.Sprintf(" %s %s ", rxGroup, txGroup)
 
 	rightW := rw.StringWidth(right)
 	rightEdge := net.Max.X - 2
@@ -215,40 +215,45 @@ func (net *NetWidget) update() {
 	if net.Mbps {
 		rx, tx = "mbps", "mbps"
 	}
-	format := " %s: %9.1f %2s/s"
 
-	var total, recent uint64
-	var label, unitRecent, rate string
-	var recentConverted float64
+	title1Format := " %s: %9.1f %2s/s"
+	if net.Mbps {
+		title1Format = " %s: %11.3f %2s"
+	}
+
+	specs := []struct {
+		idx         int
+		label       string
+		rateLabel   string
+		total       uint64
+		recent      uint64
+		compactDest *string
+	}{
+		{idx: 0, label: "RX", rateLabel: rx, total: totalBytesRecv, recent: recentBytesRecv, compactDest: &net.recentRxRate},
+		{idx: 1, label: "TX", rateLabel: tx, total: totalBytesSent, recent: recentBytesSent, compactDest: &net.recentTxRate},
+	}
+
 	// render widget titles
-	for i := 0; i < 2; i++ {
-		if i == 0 {
-			total, label, rate, recent = totalBytesRecv, "RX", rx, recentBytesRecv
-		} else {
-			total, label, rate, recent = totalBytesSent, "TX", tx, recentBytesSent
-		}
+	for _, s := range specs {
+		totalConverted, unitTotal := utils.ConvertBytes(s.total)
 
-		totalConverted, unitTotal := utils.ConvertBytes(total)
+		var recentConverted float64
+		var unitRecent string
 		if net.Mbps {
-			recentConverted, unitRecent, format = float64(recent)*0.000008, "", " %s: %11.3f %2s"
+			recentConverted = float64(s.recent) * 0.000008
+			unitRecent = ""
 		} else {
-			recentConverted, unitRecent = utils.ConvertBytes(recent)
+			recentConverted, unitRecent = utils.ConvertBytes(s.recent)
 		}
 
-		net.Lines[i].Title1 = fmt.Sprintf(format, rate, recentConverted, unitRecent)
-		net.Lines[i].Title2 = fmt.Sprintf(" %s %s: %5.1f %s", tr.Value("total"), label, totalConverted, unitTotal)
+		net.Lines[s.idx].Title1 = fmt.Sprintf(title1Format, s.rateLabel, recentConverted, unitRecent)
+		net.Lines[s.idx].Title2 = fmt.Sprintf(" %s %s: %5.1f %s", tr.Value("total"), s.label, totalConverted, unitTotal)
 
 		// Keep a compact formatted rate for the widget title (used when Title2 is hidden).
-		var compactRate string
 		if net.Mbps {
-			compactRate = fmt.Sprintf("%.3f mbps", recentConverted)
+			*s.compactDest = fmt.Sprintf("%.3f mbps", recentConverted)
 		} else {
-			compactRate = fmt.Sprintf("%.2f %s/s", recentConverted, unitRecent)
-		}
-		if i == 0 {
-			net.recentRxRate = compactRate
-		} else {
-			net.recentTxRate = compactRate
+			*s.compactDest = fmt.Sprintf("%.2f %s/s", recentConverted, unitRecent)
 		}
 	}
 }
