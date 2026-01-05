@@ -51,6 +51,16 @@ func padLeftToWidth(s string, w int) string {
 	return strings.Repeat(" ", w-sw) + s
 }
 
+// formatHeaderRate ensures:
+// - exactly one space between the arrow and the first non-space character of the rate
+// - any "fixed width" padding required for the numeric portion is kept BEFORE the arrow,
+//   so we don't end up with multiple spaces between arrow and number.
+func formatHeaderRate(arrow, rate string) string {
+	trimmed := strings.TrimLeft(rate, " ")
+	pad := strings.Repeat(" ", len(rate)-len(trimmed))
+	return pad + arrow + " " + trimmed
+}
+
 // TODO: state:merge #169 % option for network use (jrswab/networkPercentage)
 func NewNetWidget(netInterface string) *NetWidget {
 	recvSparkline := ui.NewSparkline()
@@ -98,14 +108,19 @@ func (net *NetWidget) Draw(buf *tui.Buffer) {
 	}
 
 	// Right-align the TX/RX rate string similar to how the process widget draws its location.
-	maxRateW := rw.StringWidth(net.recentRxRate)
-	if w := rw.StringWidth(net.recentTxRate); w > maxRateW {
-		maxRateW = w
+	// Keep the arrow glued to the numeric value; apply padding to the whole "arrow+rate" group.
+	txGroup := formatHeaderRate(_netUpArrow, net.recentTxRate)
+	rxGroup := formatHeaderRate(_netDownArrow, net.recentRxRate)
+
+	maxGroupW := rw.StringWidth(txGroup)
+	if w := rw.StringWidth(rxGroup); w > maxGroupW {
+		maxGroupW = w
 	}
-	rx := padLeftToWidth(net.recentRxRate, maxRateW)
-	tx := padLeftToWidth(net.recentTxRate, maxRateW)
+	txGroup = padLeftToWidth(txGroup, maxGroupW)
+	rxGroup = padLeftToWidth(rxGroup, maxGroupW)
+
 	// TX first, then RX; keep a single space between the two groups.
-	right := fmt.Sprintf(" %s %s %s %s ", _netUpArrow, tx, _netDownArrow, rx)
+	right := fmt.Sprintf(" %s %s ", txGroup, rxGroup)
 
 	rightW := rw.StringWidth(right)
 	rightEdge := net.Max.X - 2
@@ -229,9 +244,13 @@ func (net *NetWidget) update() {
 		// Keep a compact formatted rate for the widget title (used when Title2 is hidden).
 		var compactRate string
 		if net.Mbps {
-			compactRate = fmt.Sprintf("%.3f mbps", recentConverted)
+			// Keep a minimum width so the header doesn't "jump" when values drop below 10.
+			// Width will automatically expand for larger values.
+			compactRate = fmt.Sprintf("%7.3f mbps", recentConverted)
 		} else {
-			compactRate = fmt.Sprintf("%.1f %s/s", recentConverted, unitRecent)
+			// Minimum numeric width of "XX.X" (e.g. " 8.8") so the header doesn't "jump".
+			// Width will automatically expand for larger values.
+			compactRate = fmt.Sprintf("%4.1f %s/s", recentConverted, unitRecent)
 		}
 		if i == 0 {
 			net.recentRxRate = compactRate
