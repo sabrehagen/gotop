@@ -42,6 +42,9 @@ type Config struct {
 	MaxLogSize           int64
 	ExportPort           string
 	Mbps                 bool
+	// NetTitleStats enables rendering compact RX/TX rates in the widget title bar
+	// when the widget is too small to display per-line Title2 stats.
+	NetTitleStats        bool
 	Temps                []string
 	Test                 bool
 	ExtensionVars        map[string]string
@@ -68,6 +71,7 @@ func NewConfig() Config {
 		MaxLogSize:           5000000,
 		Layout:               "default",
 		ExtensionVars:        make(map[string]string),
+		NetTitleStats:        false,
 	}
 	conf.Colorscheme, _ = colorschemes.FromName(conf.ConfigDir, "default")
 	folder := conf.ConfigDir.QueryFolderContainsFile(CONFFILE)

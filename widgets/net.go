@@ -37,6 +37,9 @@ type NetWidget struct {
 	sentMetric     *metrics.Counter
 	recvMetric     *metrics.Counter
 	Mbps           bool
+	// NetTitleStats controls whether compact RX/TX rates are rendered in the widget
+	// title bar when the widget is too short to show per-line Title2 stats.
+	NetTitleStats  bool
 
 	baseTitle    string
 	recentRxRate string
@@ -52,13 +55,14 @@ func padLeftToWidth(s string, w int) string {
 }
 
 // formatHeaderRate ensures:
-// - exactly one space between the arrow and the first non-space character of the rate
-// - any "fixed width" padding required for the numeric portion is kept BEFORE the arrow,
-//   so we don't end up with multiple spaces between arrow and number.
+// - the icon is rendered AFTER the rate (e.g. "12.34 KB/s ▼")
+// - exactly one space between the rate and the icon
+// - any "fixed width" left-padding that exists in rate is preserved at the start.
 func formatHeaderRate(arrow, rate string) string {
 	trimmed := strings.TrimLeft(rate, " ")
-	pad := strings.Repeat(" ", len(rate)-len(trimmed))
-	return pad + arrow + " " + trimmed
+	padLen := len(rate) - len(trimmed)
+	pad := strings.Repeat(" ", padLen)
+	return pad + trimmed + " " + arrow
 }
 
 // TODO: state:merge #169 % option for network use (jrswab/networkPercentage)
@@ -103,21 +107,14 @@ func (net *NetWidget) Draw(buf *tui.Buffer) {
 	net.SparklineGroup.Draw(buf)
 
 	// Only draw the compact RX/TX rates in the header when the per-line Title2 can't be displayed.
-	if net.Inner.Dy() > 6 || net.recentRxRate == "" || net.recentTxRate == "" {
+	if !net.NetTitleStats || net.Inner.Dy() > 6 || net.recentRxRate == "" || net.recentTxRate == "" {
 		return
 	}
 
 	// Right-align the TX/RX rate string similar to how the process widget draws its location.
-	// Keep the arrow glued to the numeric value; apply padding to the whole "arrow+rate" group.
+	// Keep the icon glued to the rate; any fixed-width padding is handled inside the formatted rate.
 	txGroup := formatHeaderRate(_netUpArrow, net.recentTxRate)
 	rxGroup := formatHeaderRate(_netDownArrow, net.recentRxRate)
-
-	maxGroupW := rw.StringWidth(txGroup)
-	if w := rw.StringWidth(rxGroup); w > maxGroupW {
-		maxGroupW = w
-	}
-	txGroup = padLeftToWidth(txGroup, maxGroupW)
-	rxGroup = padLeftToWidth(rxGroup, maxGroupW)
 
 	// TX first, then RX; keep a single space between the two groups.
 	right := fmt.Sprintf(" %s %s ", txGroup, rxGroup)
@@ -238,19 +235,15 @@ func (net *NetWidget) update() {
 			recentConverted, unitRecent = utils.ConvertBytes(recent)
 		}
 
-		net.Lines[i].Title1 = fmt.Sprintf(" %s %s: %5.1f %s", tr.Value("total"), label, totalConverted, unitTotal)
-		net.Lines[i].Title2 = fmt.Sprintf(format, rate, recentConverted, unitRecent)
+		net.Lines[i].Title1 = fmt.Sprintf(format, rate, recentConverted, unitRecent)
+		net.Lines[i].Title2 = fmt.Sprintf(" %s %s: %5.1f %s", tr.Value("total"), label, totalConverted, unitTotal)
 
 		// Keep a compact formatted rate for the widget title (used when Title2 is hidden).
 		var compactRate string
 		if net.Mbps {
-			// Keep a minimum width so the header doesn't "jump" when values drop below 10.
-			// Width will automatically expand for larger values.
-			compactRate = fmt.Sprintf("%7.3f mbps", recentConverted)
+			compactRate = fmt.Sprintf("%.3f mbps", recentConverted)
 		} else {
-			// Minimum numeric width of "XX.X" (e.g. " 8.8") so the header doesn't "jump".
-			// Width will automatically expand for larger values.
-			compactRate = fmt.Sprintf("%4.1f %s/s", recentConverted, unitRecent)
+			compactRate = fmt.Sprintf("%.2f %s/s", recentConverted, unitRecent)
 		}
 		if i == 0 {
 			net.recentRxRate = compactRate

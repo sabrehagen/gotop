@@ -192,6 +192,7 @@ func makeWidget(c gotop.Config, widRule widgetRule) interface{} {
 		n.Lines[1].LineColor = ui.Color(c.Colorscheme.Sparklines[1])
 		n.Lines[1].TitleColor = ui.Color(c.Colorscheme.BorderLabel)
 		n.Mbps = c.Mbps
+		n.NetTitleStats = c.NetTitleStats
 		w = n
 	case "procs":
 		p := widgets.NewProcWidget()
