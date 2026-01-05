@@ -80,12 +80,19 @@ func parseArgs() error {
 	updateinterval := goopt.String([]string{"--rate", "-r"}, conf.UpdateInterval.String(), tr.Value("args.rate"))
 	layout := goopt.String([]string{"--layout", "-l"}, conf.Layout, tr.Value("args.layout"))
 	netinterface := goopt.String([]string{"--interface", "-i"}, "all", tr.Value("args.net"))
-	nettitlestats := goopt.Flag(
-		[]string{"--net-title-stats"},
-		[]string{"--no-net-title-stats"},
-		tr.Value("args.net-title-stats"),
-		tr.Value("args.no-net-title-stats"),
-	)
+	// Default comes from config (and NewConfig). Only override if explicitly set on CLI.
+	netTitleStats := conf.NetTitleStats
+	netTitleStatsSet := false
+	goopt.NoArg([]string{"--net-title-stats"}, tr.Value("args.net-title-stats"), func() error {
+		netTitleStats = true
+		netTitleStatsSet = true
+		return nil
+	})
+	goopt.NoArg([]string{"--no-net-title-stats"}, tr.Value("args.no-net-title-stats"), func() error {
+		netTitleStats = false
+		netTitleStatsSet = true
+		return nil
+	})
 	exportport := goopt.String([]string{"--export", "-x"}, conf.ExportPort, tr.Value("args.export"))
 	mbps := goopt.Flag([]string{"--mbps"}, []string{"--bytes"}, tr.Value("args.mbps"), tr.Value("args.no-mbps"))
 	test := goopt.Flag([]string{"--test"}, []string{"--no-test"}, tr.Value("args.test"), tr.Value("args.no-test"))
@@ -103,7 +110,9 @@ func parseArgs() error {
 	conf.Statusbar = *statusbar
 	conf.Layout = *layout
 	conf.NetInterface = *netinterface
-	conf.NetTitleStats = *nettitlestats
+	if netTitleStatsSet {
+		conf.NetTitleStats = netTitleStats
+	}
 	conf.ExportPort = *exportport
 	conf.Mbps = *mbps
 	conf.Nvidia = *nvidia

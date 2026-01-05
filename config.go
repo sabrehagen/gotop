@@ -71,7 +71,7 @@ func NewConfig() Config {
 		MaxLogSize:           5000000,
 		Layout:               "default",
 		ExtensionVars:        make(map[string]string),
-		NetTitleStats:        false,
+		NetTitleStats:        true,
 	}
 	conf.Colorscheme, _ = colorschemes.FromName(conf.ConfigDir, "default")
 	folder := conf.ConfigDir.QueryFolderContainsFile(CONFFILE)
@@ -174,6 +174,12 @@ func load(in io.Reader, conf *Config) error {
 			conf.Statusbar = bv
 		case netinterface:
 			conf.NetInterface = kv[1]
+		case nettitlestats:
+			bv, err := strconv.ParseBool(kv[1])
+			if err != nil {
+				return fmt.Errorf(conf.Tr.Value("config.err.line", ln, err.Error()))
+			}
+			conf.NetTitleStats = bv
 		case layout:
 			conf.Layout = kv[1]
 		case maxlogsize:
@@ -257,6 +263,8 @@ func marshal(c *Config) []byte {
 	fmt.Fprintf(buff, "%s=%t\n", statusbar, c.Statusbar)
 	fmt.Fprintln(buff, "# The network interface to monitor")
 	fmt.Fprintf(buff, "%s=%s\n", netinterface, c.NetInterface)
+	fmt.Fprintln(buff, "# If true, show compact RX/TX rates in the network widget title when the widget is short")
+	fmt.Fprintf(buff, "%s=%t\n", nettitlestats, c.NetTitleStats)
 	fmt.Fprintln(buff, "# A layout name. See `--list layouts`")
 	fmt.Fprintf(buff, "%s=%s\n", layout, c.Layout)
 	fmt.Fprintln(buff, "# The maximum log file size, in bytes")
@@ -290,6 +298,7 @@ const (
 	tempscale            = "tempscale"
 	statusbar            = "statusbar"
 	netinterface         = "netinterface"
+	nettitlestats        = "nettitlestats"
 	layout               = "layout"
 	maxlogsize           = "maxlogsize"
 	export               = "metricsexportport"
